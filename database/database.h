@@ -6,6 +6,7 @@ typedef int8 File[MAX_FILE];
 struct s_entry {
     Path path;
     File file;
+    HANDLE filehandle;
 };
 
 typedef struct s_entry Entry;

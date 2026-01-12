@@ -1,0 +1,111 @@
+1. Trebuie sa parcurgi toate fisierele de pe disc periodic si sa le scanezi
+Cum?   - Folosesti un thread care sa treaca prin toate fisierele de pe disc(doar unul pentru
+ca daca ar fi mai multe context switch time ar fi mai mare si ar deveni ineficient plus ca
+ssdul ar trebui sa sara cu pointerul de citire foarte des si l-ar suprasolicita)
+       - Celelalte threaduri citesc programele si le scaneaza unul cate unul deoarece daca
+ar fi mai multe threaduri pe un singur fisier ar dura mai mult sa se coordoneze si sa puna 
+cap la cap rezultatul decat daca ai face-o cu una. In plus caching-ul procesorului este mai 
+rapid cand e accesat consecutiv. Totodata daca semnatura virusului este in mijloc nu o vei mai
+detecta. Totusi daca ai de scanat un fisier mare precum un .iso de GB mari trebuie part in
+bucati mai mici
+        1. Cand aloci mai multe threaduri unui fisier mare si ce e considerat mare?
+            - "mare" se considera in functie de memoria L3 cache a procesorului.
+              Daca e mai mare de 256mb il marchezi pentru chunking
+            - daca este un container il despachetezi virtual. Adica?
+              un thread deschide containerul si ia fiecare fisier si il pune in coada
+
+              Cum stiu ca e un container?  - magic numbers(octetii specifici din headerul fisierului care se mai numesc si semnatura binara)
+
+              Ce fac daca e un container in container in container ... pana imi mananca toate threadurile? Se numeste Zip bomb aparent si ca sa ii dai counter trebuie sa setezi un recursion depth. 
+
+                    Ce va fi un recursion depth? Cel ce itereaza prin memorie va avea depth 0. Da de container ia un thread. Thread-ul ala va avea depth 1 si tot asa pana la o limita impusa de tine       
+
+                    Cate threaduri sa aloc maxim pentru dezarhivare?  1/2 * total threads
+
+                    Daca am un zip in zip, folosesc acelasi thread care itereaza prin primul thread pentru a itera si prin al doilea zip?   Nu, il pune in coada si se ocupa alt thread de dezarhivare. Daca nu sunt threaduri de dezarhivare libere il lasa sa astepte
+
+                    Cand sunt prea multe dezarhivari intr-un singur fisier pentru a renunta?    la 8-10 e avertisment si la 15-20 e carantinata
+
+                        Pragul este variabil depinzand de tipul fisierului ex. daca e .msi .deb .rpm aici poti ridica pragul la 15 containere
+
+                        Daca e un .docx, .xlsx ar trebui sa ai un prag mic de 3-4
+
+                        Care e adevarata problema la a avea prea multe containere in container?     nr. de fisiere total. Nu e o problema sa ai container in containere in containere ... si sa ai doar un fisier,ci sa ai containere cu 1000 fisiere in containere cu 1000
+
+                            Pentru a contracara asta vom folosi o penalizare progresiva
+                            Vom tine cont de numarul total de fisiere generate de un fisier
+                                
+                                Cate fisiere poti seta drept prag?   Depinde de ramul pe care il ai. Poti face ca threadul care dezarhiveaza sa dea flag drept suspicios(un anumit scor) cand se ajunge la > 50 * 1000 de fisiere si se opreste dezarhivarea si se scot toti copiii lui din coada
+
+                                    Si cum fac sa il sterg pe el si pe copiii lui?  Nu o fac, pur si simplu ii setez flagul de isaborted la true si mereu cand un thread nou verifica daca primul container din arbore e aborted ii da free.
+
+
+                    Cum stabilesc pragul pentru cand un zip contine prea multe zipuri de dezarhivat(un zip are 50000 de alte zipuri)?  cam 1000 de alte containere il face suspicios si daca are prea multe fisiere intervine ce am intrebat mai sus
+
+                        Trebuie sa iterez prin tot fisierul ca sa vad cate containere are?
+                        Nu, doar verifici Central Directory
+
+                    Poti totodata sa aloci un timp 10 secunde + (1 secundă pentru fiecare 10 MB)
+
+                    La ce prag de compresie devine un zip malitios? de ex de la a trece din 10kb la 2gb? La un prag de suspiciune intre 1:50 si 1 : 100 si de malitios la > 1 : 100 
+            
+            Daca nu e container si pur si simplu are 100gb ce fac?  Iau un thread care sa citeasca ferestre de cate 256 mb care mai apoi sunt impartite in chunk-uri de 16mb si puse in queue
+
+                Ce fac daca virusul este fix intre chunk-uri? iau o margine din chunkul anterior
+
+                    Cat de mare sa fie marginea?  egală cu lungimea celei mai lungi semnături - 1
+
+                Nu o sa inunde coada?  Nu ca pui doar aia 256 mb in coada(chunk-urile de 16 mb mai exact)
+
+                Pai si threadul care itereaza nu poate sta degeaba daca a pus o fereastra si nimeni nu ii scaneaza chunk-urile?
+                
+                
+                    
+
+Trebuie folosiete drivere de kernel
+
+1 thread itereaza prin tot pc-ul si pune calea fisierelor drept un entry in coada
+
+in coada
+1 thread preia cate un fisier pe rand si
+    threadul trebuie sa ceara acces la fisier sistemului cu FILE_SHARE_READ 
+        Dacă vrei să sari cât mai puține fișiere și să nu primești "Access Denied", trebuie să activezi în programul tău un privilegiu special de Windows numit SeBackupPrivilege
+
+        In loc să verifici fiecare fișier, verifici folderul părinte. Dacă iteratorul tău intră într-un folder care are proprietarul TrustedInstaller (cum este C:\Windows\Servicing), poți să fii 100% sigur că tot ce e acolo îți va da bătăi de cap.
+
+        Aceasta este cauza numărul 1 pentru care scanerele "îngheață" sau dau erori de acces infinite. Foldere precum C:\Documents and Settings sunt doar niște legături (links) către alte foldere.
+
+        De ce e eficient: Verificarea atributelor (dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) se face instantaneu din metadatele directorului, fără a accesa fișierul în sine. Dacă e un reparse point, îi dai skip fără nicio întrebare.
+
+        Daca da access denied il dai unui thread special care e facut pentru scrierea intr-un fisier de pe disc. Acel thread va scrie numele folderului si cate fisiere de access denied are
+    
+    threadul verifica dimensiunea din metadate. Daca are 0kb il ignori .Daca are > 256 mb il marchezi ca fisier mare ce trebuie chunk-uit
+
+    threadul citeste magic numbers si in functie de ce e acorda un scor de importanta
+
+        tot aici vede daca e container sau nu
+
+        orice fisiere media trebuiesc ignorate, la fel si text, fisiere de font TTF, OTF
+        scanezi partial PDF, WORD< XLSX pentru macro-uri sau scripturi imbeded(scanare logica), FIȘIERE DE SISTEM NEEXECUTABILE
+
+        Trebuie scanarea facuta pe niveluri pentru ca un executabil e mai important decat un PDF
+
+    threadul incearca sa gaseasca semnaturi cu Aho-Corasick si le compara cu o baza de date precum YARA Rules sau ClamAV pe care o pui intr-un hashmap
+
+        Descarci fișierul CSV/JSON cu hash-uri.
+
+        Îl încarci într-un std::unordered_set<string> la pornirea programului.
+
+        În thread-ul de scanare, calculezi hash-ul fișierului (sau al primului chunk) și verifici dacă există în set.
+
+    Daca nu e in baza de date te uiti dupa comportament suspicios precum Dacă o poză (.jpg) cere permisiuni de InternetOpen și WriteProcessMemory, este 100% periculoasă. Entropy Check (Analiza Entropiei): Malware-ul modern este adesea criptat sau împachetat (packed) pentru a ascunde codul. Un fișier cu entropie foarte mare (date care par aleatorii) este suspect și merită o scanare mai adâncă. Secțiuni neobișnuite: Dacă un executabil are secțiuni cu nume ciudate sau permisiuni de Read/Write/Execute pe aceeași secțiune, este un semn de "Self-modifying code" (specific virușilor)
+
+    Verificarea Semnăturii Digitale
+
+    
+
+
+
+    
+
+Aho-Corasic

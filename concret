@@ -1,0 +1,11 @@
+1 thread itereaza prin tot pc-ul si pune calea fisierelor drept un entry in coada
+
+1 thread preia cate un fisier pe rand si
+
+    verifica daca are acces sau nu: daca nu are il trimiti unui thread special
+
+    threadul verifica dimensiunea
+
+    verifica magic numbers
+
+    verifica semnaturile

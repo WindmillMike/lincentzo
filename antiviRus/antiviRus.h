@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+#include <bcrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <errno.h>
 #include <windows.h>
+
+#pragma comment(lib, "bcrypt.lib")
 
 typedef unsigned char int8;
 typedef unsigned short int int16;
