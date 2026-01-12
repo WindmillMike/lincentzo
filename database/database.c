@@ -32,7 +32,7 @@ void showdb(Database *db){
     printf("cap:\t%d\nnum:\t%d\n", db->cap, db->num);
 
     for (n = 0; n < db->num; n++)
-        printf("%s/%s\n", db->entries[n].path, db->entries[n].file);
+        printf("%s/%s\n", db->entries[n].dir, db->entries[n].file);
 
     return;
 }
@@ -76,4 +76,55 @@ void popfromdb(Database *db, Entry *e) {
     memset($1 &db->entries[db->num], 0, sizeof(Entry));
 
     return;
+}
+
+// Nu e inca ok
+
+bool adddir(Database *db, int8 *path) {
+    Entry e;
+    HANDLE handle = CreateFileA(
+        path,
+        FILE_LIST_DIRECTORY,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS, 
+        NULL
+    );
+
+    if (handle == INVALID_HANDLE_VALUE) return false;
+
+    BYTE buffer[102400] __attribute__((aligned(8)));
+
+    if (!GetFileInformationByHandleEx(handle, FileIdBothDirectoryInfo, buffer, sizeof(buffer))) {
+        CloseHandle(handle);
+        return false;
+    }
+
+    FILE_ID_BOTH_DIR_INFO *info = (FILE_ID_BOTH_DIR_INFO *)buffer;
+    while (1) {
+        memset($c &e, 0, sizeof(Entry));  
+        strncpy($c e.dir, $c path, MAX_PATH - 1);
+
+
+        int32 byteswritten = WideCharToMultiByte(
+            CP_UTF8,             
+            0, 
+            info->FileName,     
+            info->FileNameLength / sizeof(WCHAR),          
+            e.file,             
+            MAX_FILE - 1,       
+            NULL, NULL
+        );
+        
+
+        e.file[byteswritten] = '\0';
+        addtodb(db, &e);
+        
+        if (info->NextEntryOffset == 0) break;
+        info = (FILE_ID_BOTH_DIR_INFO *)((BYTE *)info + info->NextEntryOffset);
+    }
+
+    CloseHandle(handle);
+    return true;
 }

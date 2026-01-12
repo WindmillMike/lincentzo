@@ -1,4 +1,4 @@
-#include <bcrypt.h>
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,16 +7,14 @@
 #include <errno.h>
 #include <windows.h>
 
-#pragma comment(lib, "bcrypt.lib")
-
 typedef unsigned char int8;
 typedef unsigned short int int16;
 typedef unsigned int int32;
 typedef unsigned long long int int64;
 
-#define Blocksize 50 * 1000
+#define Blocksize 100 * 1000
 #define MAX_PATH 260
-#define MAX_FILE 32
+#define MAX_FILE 64
 
 #define $1 (int8 *)
 #define $2 (int16)

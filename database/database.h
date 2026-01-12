@@ -1,12 +1,11 @@
 #include "../antiviRus/antiviRus.h"
 
-typedef int8 Path[MAX_PATH];   
+typedef int8 Dir[MAX_PATH];   
 typedef int8 File[MAX_FILE];
 
 struct s_entry {
-    Path path;
+    Dir dir;
     File file;
-    HANDLE filehandle;
 };
 
 typedef struct s_entry Entry;
