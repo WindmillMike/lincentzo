@@ -1,32 +1,52 @@
 #include "../antiviRus/antiviRus.h"
 
-typedef int8 Dir[MAX_PATH];   
-typedef int8 File[MAX_FILE];
 
 struct s_entry {
-    Dir dir;
-    File file;
+    int32 fileoffset;
+    int32 diroffset;
 };
 
 typedef struct s_entry Entry;
 
+struct s_hashnode {
+    int32 next;
+};
+
+typedef struct s_hashnode HashNode;
+
 struct s_database {
     Entry *entries;
-    int32 cap;
-    int32 num;
+    HashNode *nodes;
+    int32 *hashindexes;
+
+    int8 *pool;         // Rezervorul de memorie (String Pool) pentru nume
+    int32 poolcap;    // Capacitatea pool-ului
+    int32 poolused;   // Cat din pool am folosit deja
+
+    int32 cap;          // Capacitatea curenta (numar de entries)
+    int32 num;          // Numarul actual de fisiere salvate
+    int32 hashsize;
 };
 
 typedef struct s_database Database;
 
-int32 hash(Database *, int8 *);
+int32 hash(Database *, int8 *, int8 *);
+
+int32 hashpath(Database *, int8 *);
 
 Database *mkdatabase();
 
 bool adddir(Database *, int8 *);
 
-void addtodb(Database *, Entry *);
+void addtodb(Database *, int8 *, int8 *);
 
-void popfromdb(Database *, Entry *);
+int32 addtopool(Database *, int8 *);
+
+void hashresize(Database *);
+
+void findbypathdb(Database *, int8 *);
+
+void popfromdb(Database *, int8 *);
 
 void destroydb(Database *);
 

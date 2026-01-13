@@ -13,12 +13,11 @@ typedef unsigned int int32;
 typedef unsigned long long int int64;
 
 #define Blocksize 100 * 1000
-#define MAX_PATH 260
-#define MAX_FILE 64
+#define Hashsize 100 * 1000 + 3
 
 #define $1 (int8 *)
 #define $2 (int16)
-#define $4 (int32)
+#define $4 (int32 *)
 #define $8 (int64)
 #define $c (char *)
 #define $i (int)
