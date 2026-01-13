@@ -1,7 +1,7 @@
 #include "database.h"
 #include "../antiviRus/antiviRus.h"
 
-int32 hash(Database *db, int8 *dir, int8 *file) {
+int32 hash(Database *db, int8 *dir, int8 *file, int8 capacity) {
     int32 h = 5381, c;
 
     while ((c = *dir++)) {
@@ -14,17 +14,17 @@ int32 hash(Database *db, int8 *dir, int8 *file) {
         h = ((h << 5) + h) + c;
     }
     
-    return h % db->hashsize;
+    return h % capacity;
 }
 
-int32 hashpath(Database *db, int8 *path) {
+int32 hashpath(Database *db, int8 *path, int8 capacity) {
     int32 h = 5381, c;
 
     while ((c = *path++)) {
         h = ((h << 5) + h) + c;
     }
 
-    return h % db->hashsize;
+    return h % capacity;
 }
 
 Database *mkdatabase() {
@@ -37,14 +37,21 @@ Database *mkdatabase() {
     db->poolcap = 1 * 1000 * 1000;   
     db->num = 0;
     db->poolused = 0;
+    db->foldercap = Folderhashsize;
+    db->foldernum = 0;
 
     db->entries = (Entry *)malloc(db->cap * sizeof(Entry));
     assert(db->entries);   
     memset($1 db->entries, 0, sizeof(Entry));  
+
     db->nodes = (HashNode *)malloc(db->cap * sizeof(HashNode));
     assert(db->nodes);   
     memset($1 db->nodes, 0, sizeof(HashNode));  
-    
+
+    db->folderhashes = $4 malloc(db->foldercap * sizeof(int32));
+    assert(db->folderhashes);   
+    memset($1 db->folderhashes, 0, sizeof(int32));  
+
     db->hashindexes = $4 malloc(db->hashsize * sizeof(int32));
     assert(db->hashindexes);   
     memset($1 db->hashindexes, 0, sizeof(int32)); 
@@ -53,13 +60,17 @@ Database *mkdatabase() {
     assert(db->pool);   
     memset($1 db->pool, 0, sizeof(int8)); 
 
-    if (!db->entries || !db->nodes || !db->hashindexes || !db->pool) {
+    if (!db->entries || !db->nodes || !db->hashindexes || !db->pool || !db->folderhashes) {
         destroydb(db);
         return NULL;
     }
 
     for (int32 i = 0; i < db->hashsize; i++) {
         db->hashindexes[i] = -1;
+    }
+
+    for (int32 i = 0; i < db->foldercap; i++) {
+        db->folderhashes[i] = -1;
     }
 
     return db;
@@ -73,6 +84,9 @@ void destroydb(Database *db) {
     
     if (db->nodes) 
         free(db->nodes);
+
+    if (db->folderhashes) 
+        free(db->folderhashes);
     
     if (db->hashindexes) 
         free(db->hashindexes);
@@ -119,19 +133,52 @@ void addtodb(Database *db, int8 *dir, int8 *file) {
     if (db->num >= db->hashsize * 0.75) 
         hashresize(db);
 
-    int32 h = hash(db, dir, file);
+    int32 h = hash(db, dir, file, db->hashsize);
 
     int32 i = db->num;
-    db->entries[i].diroffset = addtopool(db, dir);    //Trebuie sa implementez o modalitate de a nu duplica folderele printr-un hash table
-    db->entries[i].fileoffset = addtopool(db, file);
+    db->entries[i].diroffset = adddirpool(db, dir);   
+    db->entries[i].fileoffset = addfilepool(db, file);
 
     db->nodes[i].next = db->hashindexes[h];
     db->hashindexes[h] = i;
     db->num++;
 }
 
-int32 addtopool(Database *db, int8 *str) {
-    int32 len = strlen($c str) + 1;
+int32 adddirpool(Database *db, int8 *dir) {
+    int32 len = strlen($c dir) + 1;
+
+    if (db->foldernum >= db->foldercap * 0.75) {
+        dirhashresize(db);
+    }
+
+    int32 h = hashpath(db, dir, db->foldercap);
+
+    while (db->folderhashes[h] != -1) {
+        int8 *existingdir = $1 (db->pool + db->folderhashes[h]);
+        if (strcmp($c dir, $c existingdir) == 0) 
+            return db->folderhashes[h]; 
+        
+        h = (h + 1) % db->foldercap;
+    }
+
+    while (db->poolused + len > db->poolcap) {
+        db->poolcap *= 2;
+        db->pool = $1 realloc(db->pool, db->poolcap);
+        assert(db->pool);
+        memset($1 (db->pool + db->poolused), 0, (db->poolcap - db->poolused));
+    }
+ 
+    int32 offset = db->poolused;
+    memcpy(db->pool + offset, dir, len);
+    db->poolused += len;
+    db->folderhashes[h] = offset;
+    db->foldernum++;
+
+    return offset;
+}
+
+int32 addfilepool(Database *db, int8 *file) {
+    int32 len = strlen($c file) + 1;
 
     while (db->poolused + len > db->poolcap) {
         db->poolcap *= 2;
@@ -141,14 +188,40 @@ int32 addtopool(Database *db, int8 *str) {
     }
 
     int32 offset = db->poolused;
-    memcpy(db->pool + offset, str, len);
+    memcpy(db->pool + offset, file, len);
     db->poolused += len;
 
     return offset;
 }
 
+void dirhashresize(Database *db) {
+    int32 oldcap = db->foldercap;
+    db->foldercap *= 2;
+    int32 *newfolderhashes = $4 malloc(db->foldercap * sizeof(int32));
+    assert(newfolderhashes);
+    memset($1 newfolderhashes, 0, sizeof(int32));
+
+    for (int32 i = 0; i < db->foldercap; i++) {
+        newfolderhashes[i] = -1;
+    }
+
+    for (int32 i = 0; i < oldcap; i++) {
+        int32 offset = db->folderhashes[i];
+        if (offset == -1) continue;
+        else {
+            int8 *dir = $1 (db->pool + offset);
+            int32 h = hashpath(db, dir, db->foldercap);
+            while (newfolderhashes[h] != -1) 
+                h = (h + 1) % db->foldercap;
+            newfolderhashes[h] = i;
+        }
+    }
+
+    free(db->folderhashes);
+    db->folderhashes = newfolderhashes;
+}
+
 void hashresize(Database *db) {
-    int32 old_hashsize = db->hashsize;
     db->hashsize *= 2;
     int32 *newindexes = $4 malloc(db->hashsize * sizeof(int32));
     assert(newindexes);
@@ -161,7 +234,7 @@ void hashresize(Database *db) {
     for (int32 i = 0; i < db->num; i++) {
         int8 *dir = $1 (db->pool + db->entries[i].diroffset);
         int8 *file = $1 (db->pool + db->entries[i].fileoffset);
-        int32 h = hash(db, dir, file);
+        int32 h = hash(db, dir, file, db->hashsize);
         db->nodes[i].next = newindexes[h];
         newindexes[h] = i;
     }
@@ -171,7 +244,7 @@ void hashresize(Database *db) {
 }
 
 void findbypathdb(Database *db, int8 *path) {
-    int32 h = hashpath(db, path);
+    int32 h = hashpath(db, path, db->hashsize);
     int32 i = db->hashindexes[h];
     while (i != -1) {
         Entry *e = &db->entries[i];
@@ -197,8 +270,9 @@ void findbypathdb(Database *db, int8 *path) {
 }
 
 void popfromdb(Database *db, int8 *path) {
-    int32 h = hashpath(db, path);
+    int32 h = hashpath(db, path, db->hashsize);
     int32 i = db->hashindexes[h];
+    int32 prev = -1;
 
     while (i != -1) {
         Entry *e = &db->entries[i];
@@ -211,11 +285,36 @@ void popfromdb(Database *db, int8 *path) {
         memset($1 full_path, 0, needed_size * sizeof(int8));
         snprintf($1 full_path, needed_size, "%s\\%s", $1 dir_path, $1 file_name);
         if (strcmp($1 full_path, $1 path) == 0) {
-            
+            if (prev == -1) 
+                db->hashindexes[h] = db->nodes[i].next;
+            else 
+                db->nodes[prev].next = db->nodes[i].next;
             return;
         }
 
+        free(full_path);
+        prev = i;
+        i = db->nodes[i].next;
+    }
 
+    prev = db->num - 1;
+    if (prev != -1) {
+        db->entries[i] = db->entries[prev];
+        db->nodes[i] = db->nodes[prev];
+        
+        int8 *dir = db->pool + db->entries[i].diroffset;
+        int8 *file = db->pool + db->entries[i].fileoffset;
+        int32 h = hash(db, dir, file, db->hashsize);
+
+        int32 index = db->hashindexes[h];
+        if (index == prev) 
+            db->hashindexes[h] = i;
+        else 
+            while (db->nodes[index].next != prev) 
+                index = db->nodes[index].next;
+            db->nodes[index].next = i;
+    }
+    db->num--;
 }
 
 // Nu e inca ok

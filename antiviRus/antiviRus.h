@@ -14,6 +14,7 @@ typedef unsigned long long int int64;
 
 #define Blocksize 100 * 1000
 #define Hashsize 100 * 1000 + 3
+#define Folderhashsize 50 * 1000 + 3
 
 #define $1 (int8 *)
 #define $2 (int16)
